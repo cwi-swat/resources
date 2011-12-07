@@ -1,0 +1,15 @@
+Manifest-Version: 1.0
+Bundle-ManifestVersion: 2
+Bundle-Name: Resource
+Bundle-SymbolicName: Resource
+Bundle-Version: 1.0.0.qualifier
+Require-Bundle: org.eclipse.imp.pdb.values,
+ rascal
+Bundle-ClassPath: lib/jackson-core-asl-1.9.2.jar,
+ lib/jackson-mapper-asl-1.9.2.jar,
+ lib/mysql-connector-java-5.1.18-bin.jar,
+ lib/jetty-util-7.1.5.v20100705.jar
+Export-Package: org.rascalmpl.library.experiments.resource.resources.db.mysql,
+ org.rascalmpl.library.experiments.resource.resources.twitter,
+ org.rascalmpl.library.experiments.resource.results,
+ org.rascalmpl.library.experiments.resource.results.buffers
