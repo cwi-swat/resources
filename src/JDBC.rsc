@@ -191,7 +191,6 @@ public str tableSchema(str moduleName, loc uri) {
 		else if (size(ops) > 2)
 			throw "Unexpected option"; // todo: replace with an exception constructor
 	}
-	println("Computed parameters: <params>");
 	
 	// We can pass the name of the function to generate. If we did, grab it then remove
 	// it from the params, which should just contain those needed by the JDBC driver.
