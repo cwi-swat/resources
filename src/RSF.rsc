@@ -37,7 +37,7 @@ public str generate(str moduleName, loc uri) {
 		options = domainX(options,{"funname"});
 	}
 		
-	map[str, Symbol] rsfRels = getRsfType(rsfUri, options);
+	map[str, Symbol] rsfRels = getRSFTypes(rsfUri);
 	
 	mbody = "module <moduleName>
 			'import lang::rsf::IO;
