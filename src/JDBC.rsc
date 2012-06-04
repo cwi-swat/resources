@@ -134,10 +134,10 @@ public Symbol jdbc2RascalType(char()) = \str();
 public Symbol jdbc2RascalType(clob()) = \str();
 public Symbol jdbc2RascalType(dataLink()) { throw unsupportedJDBCType(datalink()); }
 public Symbol jdbc2RascalType(date()) = \datetime();
-public Symbol jdbc2RascalType(decimal()) = \real();
+public Symbol jdbc2RascalType(decimal()) = Symbol::\real();
 public Symbol jdbc2RascalType(distinct()) { throw unsupportedJDBCType(distinct()); }
-public Symbol jdbc2RascalType(double()) = \real();
-public Symbol jdbc2RascalType(float()) = \real();
+public Symbol jdbc2RascalType(double()) = Symbol::\real();
+public Symbol jdbc2RascalType(float()) = Symbol::\real();
 public Symbol jdbc2RascalType(integer()) = \int();
 public Symbol jdbc2RascalType(javaObject()) { throw unsupportedJDBCType(javaObject()); }
 public Symbol jdbc2RascalType(longNVarChar()) = \str();
@@ -146,10 +146,10 @@ public Symbol jdbc2RascalType(longVarChar()) = \str();
 public Symbol jdbc2RascalType(nChar()) = \str();
 public Symbol jdbc2RascalType(nClob()) = \str();
 public Symbol jdbc2RascalType(null()) { throw unsupportedJDBCType(null()); }
-public Symbol jdbc2RascalType(numeric()) = \real();
+public Symbol jdbc2RascalType(numeric()) = Symbol::\real();
 public Symbol jdbc2RascalType(nVarChar()) = \string();
 public Symbol jdbc2RascalType(other()) { throw unsupportedJDBCType(other()); }
-public Symbol jdbc2RascalType(\real()) = \real();
+public Symbol jdbc2RascalType(\real()) = Symbol::\real();
 public Symbol jdbc2RascalType(ref()) { throw unsupportedJDBCType(ref()); }
 public Symbol jdbc2RascalType(rowId()) { throw unsupportedJDBCType(rowId()); }
 public Symbol jdbc2RascalType(smallInt()) = \int();
@@ -166,20 +166,94 @@ data Nullable[&T] = null() | notnull(&T item);
 
 @doc{Load the contents of a table.}
 @javaClass{org.rascalmpl.library.experiments.resource.JDBC}
-public java list[&T] loadTable(type[&T] resType, Connection connection, str tableName);
+public java set[&T] loadTable(type[&T] resType, Connection connection, str tableName);
+
+@doc{Load the contents of a table.}
+@javaClass{org.rascalmpl.library.experiments.resource.JDBC}
+public java list[&T] loadTableOrdered(type[&T] resType, Connection connection, str tableName);
+
+@resource{jdbctables}
+public str tableSchema(str moduleName, loc uri) {
+	// This indicates which driver we need (MySQL, Oracle, etc)
+	driverType = uri.scheme;
+	if (driverType notin drivers) throw "Driver not found";
+
+	// The URI should include the host and the database as well. The
+	// path should just be the database name.
+	hostName = uri.host;
+	if (uri.path != "/<uri.file>") throw "Invalid path, should just include database name";
+	dbName = uri.file;
+	
+	// These are the rest of the params, which should include everything
+	// needed to connect plus some params that alter the generation
+	list[tuple[str,str]] params = [ ];
+	for (qp <- split("&", uri.query)) {
+		ops = split("=",qp);
+		if (size(ops) == 2)
+			params += < uriDecode(ops[0]), uriDecode(ops[1]) >;
+		else if (size(ops) > 2)
+			throw "Unexpected option"; // todo: replace with an exception constructor
+	}
+	
+	// Now, create the connect string, based on the type of database and the
+	// parameters passed in.
+	params = [<"host",hostName>,<"database",dbName>] + params;
+	connectString = connectStringGenerators[driverType](params);
+	
+	// We need to connect to get the tables that we will generate accessors for
+	registerJDBCClass(drivers[driverType]);
+	con = createConnection(connectString);
+
+	// Get back a list of table types, sorted by table name
+	ts = sort(toList(getTables(con)),bool(t1,t2) { return t1.tableName < t2.tableName; });
+	
+	// Then, generate the accessor function for each
+	list[str] tfuns = [ ];
+	for (Table t <- ts) {
+		columnTypes = [ nullable ? \label("\\<cn>",\adt("Nullable",[rt])) : \label("\\<cn>",rt) | table(tn,cl) := t, column(cn,ct,nullable) <- cl, rt := jdbc2RascalType(ct) ];
+		columnTuple = \tuple(columnTypes);
+
+		tfun = "alias \\<t.tableName>RowType = <prettyPrintType(columnTuple)>;
+			   'alias \\<t.tableName>Type = rel[<intercalate(",",[prettyPrintType(ct) | ct <- columnTypes])>];
+			   '
+			   'public \\<t.tableName>Type \\<t.tableName>() {
+			   '	registerJDBCClass(\"<drivers[driverType]>\");
+			   '	con = createConnection(\"<connectString>\");
+			   '	\\<t.tableName>Type res = loadTable(#<prettyPrintType(columnTuple)>,con,\"<t.tableName>\");
+			   '	closeConnection(con);
+			   '	return res;
+			   '}
+			   '";
+		
+		tfuns += tfun;
+	}
+		
+	closeConnection(con);
+	
+	// Generate the module, which will include accessors for each table.
+	mbody = "module <moduleName>
+			'import JDBC;
+			'
+			'<for (tfun <- tfuns) {>
+			'<tfun>
+			'<}>
+			'";
+	
+	return mbody;
+}
 
 @resource{jdbctable}
 public str tableSchema(str moduleName, loc uri) {
-	if (uri.scheme != "jdbctable") throw unexpectedScheme("jdbctable",head(parts),uri);
-
 	// This indicates which driver we need (MySQL, Oracle, etc)
-	driverType = uri.host;
+	driverType = uri.scheme;
 	if (driverType notin drivers) throw "Driver not found";
 
-	// The URI should be of the form host/database/table, get these pieces out
+	// The URI should include the host, the database, and the name of
+	// the table. The path should just be database/table.
+	hostName = uri.host;
+	if (uri.path != "/<uri.parent.file>/<uri.file>") throw "Invalid path, should include database name/table name";
 	tableName = uri.file;
 	dbName = uri.parent.file;
-	hostName = uri.parent.parent.file;	
 	
 	// These are the rest of the params, which should include everything
 	// needed to connect plus some params that alter the generation
@@ -215,10 +289,14 @@ public str tableSchema(str moduleName, loc uri) {
 	
 	mbody = "module <moduleName>
 			'import JDBC;
-			'public list[<prettyPrintType(columnTuple)>] <funname>() {
+			'
+			'alias \\<tableName>RowType = <prettyPrintType(columnTuple)>;
+			'alias \\<tableName>Type = rel[<intercalate(",",[prettyPrintType(ct) | ct <- columnTypes])>];
+			'
+			'public \\<tableName>Type <funname>() {
 			'	registerJDBCClass(\"<drivers[driverType]>\");
 			'	con = createConnection(\"<connectString>\");
-			'	list[<prettyPrintType(columnTuple)>] res = loadTable(#<prettyPrintType(columnTuple)>,con,\"<tableName>\");
+			'	\\<tableName>Type res = loadTable(#<prettyPrintType(columnTuple)>,con,\"<tableName>\");
 			'	closeConnection(con);
 			'	return res;
 			'}

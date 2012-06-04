@@ -13,13 +13,6 @@ import lang::csv::IO;
 
 @resource{csv}
 public str generate(str moduleName, loc uri) {
-	if (uri.scheme != "csv")
-		throw unexpectedScheme("csv",head(parts),uri);
-
-	parts = tail(split("/", uri.path));
-	csvUri = |<uri.host>:///<intercalate("/",parts)>|;
-	println("Computed URI: <csvUri>");
-	
 	map[str,str] options = ( );
 	for (qp <- split("&", uri.query)) {
 		ops = split("=",qp);
@@ -37,12 +30,15 @@ public str generate(str moduleName, loc uri) {
 		options = domainX(options,{"funname"});
 	}
 		
-	Symbol csvType = getCSVType(csvUri, options);
+	Symbol csvType = getCSVType(uri, options);
 	
 	mbody = "module <moduleName>
 			'import lang::csv::IO;
-			'public <prettyPrintType(csvType)> <funname>() {
-			'	return readCSV(#<prettyPrintType(csvType)>, <csvUri>, <options>);
+			'
+			'alias <funname>Type = <prettyPrintType(csvType)>;
+			'
+			'public <funname>Type <funname>() {
+			'	return readCSV(#<prettyPrintType(csvType)>, <uri>, <options>);
 			'}
 			'";
 			

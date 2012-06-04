@@ -696,9 +696,38 @@ public class JDBC {
 				PreparedStatement stmt = conn.prepareStatement("SELECT * FROM " + tableName.getValue());
 				ResultSet rs = stmt.executeQuery();
 				
-				System.out.println(resultType.getType());
-				System.out.println(resultType.getType().getTypeParameters());
-				System.out.println(resultType.getType().getTypeParameters().getFieldType(0));
+				Type elementType = resultType.getType().getTypeParameters().getFieldType(0);
+				int columns = elementType.getArity();
+
+				ISetWriter sw = vf.setWriter(elementType);
+				while (rs.next()) {
+					IValue tupleValues[] = new IValue[columns];
+					for (int idx = 0; idx < columns; ++idx) {
+						tupleValues[idx] = JDBC.jdbc2pdbValue(rs, idx + 1, elementType.getFieldType(idx), this.vf);
+					}
+					sw.insert(vf.tuple(tupleValues));
+				}
+				
+				rs.close();
+				stmt.close();
+				
+				return sw.done();
+			} else {
+				throw RuntimeExceptionFactory.illegalArgument(connection, null, null, "Connection does not exist.");
+			}
+		} catch (SQLException sqle) {
+			throw RuntimeExceptionFactory.illegalArgument(connection, null, sqle.getMessage());
+		}
+	}
+
+	public IValue loadTableOrdered(IValue resultType, IConstructor connection, IString tableName) {
+		try {
+			IInteger connectionId = (IInteger) connection.get(0);
+			if (connectionMap.containsKey(connectionId)) {
+				Connection conn = connectionMap.get(connectionId);
+				PreparedStatement stmt = conn.prepareStatement("SELECT * FROM " + tableName.getValue());
+				ResultSet rs = stmt.executeQuery();
+				
 				Type elementType = resultType.getType().getTypeParameters().getFieldType(0);
 				int columns = elementType.getArity();
 
@@ -708,9 +737,7 @@ public class JDBC {
 					for (int idx = 0; idx < columns; ++idx) {
 						tupleValues[idx] = JDBC.jdbc2pdbValue(rs, idx + 1, elementType.getFieldType(idx), this.vf);
 					}
-					System.out.println("Preparing to append array of values");
 					lw.append(vf.tuple(tupleValues));
-					System.out.println("Append finished");
 				}
 				
 				rs.close();
