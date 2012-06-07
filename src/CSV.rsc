@@ -38,9 +38,9 @@ public str generate(str moduleName, loc uri) {
 			'alias <funname>Type = <prettyPrintType(csvType)>;
 			'
 			'public <funname>Type <funname>() {
-			'	return readCSV(#<prettyPrintType(csvType)>, <uri>, <options>);
+			'	return readCSV(#<funname>Type, <uri>, <options>);
 			'}
 			'";
-			
+    println("Generates: <mbody>");
 	return mbody;
 }
