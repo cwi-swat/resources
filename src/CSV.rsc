@@ -23,12 +23,12 @@ public str generate(str moduleName, loc uri) {
 		options = domainX(options,{"funname"});
 	}
 		
-	Symbol csvType = getCSVType(uri, options);
+	type[value] csvType = getCSVType(uri, options);
 	
 	mbody = "module <moduleName>
 			'import lang::csv::IO;
 			'
-			'alias <funname>Type = <prettyPrintType(csvType)>;
+			'alias <funname>Type = <csvType>;
 			'
 			'public <funname>Type <funname>() {
 			'	return readCSV(#<funname>Type, <uri>, <options>);
