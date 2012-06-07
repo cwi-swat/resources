@@ -8,16 +8,12 @@ import experiments::resource::Resource;
 
 @resource{rsf}
 public str generate(str moduleName, loc uri) {
-	
-	// Retrieve the relation names and their types
-	map[str, Symbol] rsfRels = getRSFTypes(uri);
+	map[str, type[value]] rels = getRSFTypes(uri);
 	
 	return  "module <moduleName>
 			'import lang::rsf::IO;
-			'<for(rname <- rsfRels){>
-		         'public <prettyPrintType(rsfRels[rname])> <rname>() {
-			     '	return readRSFRelation(#<prettyPrintType(rsfRels[rname])>, \"<rname>\", <uri>);
-			     '}
-			'<}>
-			'";
+			'<for(rname <- rels){>
+		    'public <rels[rname]> <rname>() {
+			'  return readRSFRelation(#<rels[rname]>, \"<rname>\", <uri>);
+			'}<}>";
 }
