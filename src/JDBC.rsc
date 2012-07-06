@@ -164,16 +164,31 @@ public Symbol jdbc2RascalType(varChar()) = \str();
 @doc{Represents values which may or may not be null.}
 data Nullable[&T] = null() | notnull(&T item);
 
-@doc{Load the contents of a table.}
+@doc{Load the contents of a table. This will turn the contents into a set, which by its nature will remove any
+     duplicates and discard any order. To maintain duplicates, or the order inherent in the table,
+     use loadTableOrdered instead.}
 @javaClass{org.rascalmpl.library.experiments.resource.JDBC}
 public java set[&T] loadTable(type[&T] resType, Connection connection, str tableName);
 
-@doc{Load the contents of a table.}
+@doc{Load the contents of a table. This will turn the contents into a set, which by its nature will remove any
+     duplicates and discard any order. To maintain duplicates, or the order inherent in the table, use 
+     loadTableOrdered instead. This versions uses no type information, meaning that it returns a set of values.} 
+@javaClass{org.rascalmpl.library.experiments.resource.JDBC}
+public java set[value] loadTable(Connection connection, str tableName);
+
+@doc{Load the contents of a table. This maintains order and duplicates, but does not provide access to the
+     relational operations provided by loadTable.}
 @javaClass{org.rascalmpl.library.experiments.resource.JDBC}
 public java list[&T] loadTableOrdered(type[&T] resType, Connection connection, str tableName);
 
+@doc{Load the contents of a table. This maintains order and duplicates, but does not provide access to the
+     relational operations provided by loadTable. Also, with no type information, this version returns a list
+     of values.}
+@javaClass{org.rascalmpl.library.experiments.resource.JDBC}
+public java list[value] loadTableOrdered(Connection connection, str tableName);
+
 @resource{jdbctables}
-public str tableSchema(str moduleName, loc uri) {
+public str allTableSchemas(str moduleName, loc uri) {
 	// This indicates which driver we need (MySQL, Oracle, etc)
 	driverType = uri.scheme;
 	if (driverType notin drivers) throw "Driver not found";

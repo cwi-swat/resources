@@ -7,6 +7,7 @@ import java.sql.DatabaseMetaData;
 import java.sql.DriverManager;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
+import java.sql.ResultSetMetaData;
 import java.sql.SQLException;
 import java.sql.Types;
 import java.util.Calendar;
@@ -455,10 +456,13 @@ public class JDBC {
 		return res;
 	}
 	
-	public static IValue jdbc2pdbValue(ResultSet rs, int idx, Type columnType, IValueFactory vf) {
+	public static IValue jdbc2pdbValue(ResultSet rs, int idx, IValueFactory vf) {
 		IValue res = null;
 		
 		try {
+			if (idx == 0 && rs.getInt(0) == 1219)
+				System.err.println(rs.getDate(6));
+
 			int jdbcColumnType = rs.getMetaData().getColumnType(idx);
 			Calendar c = Calendar.getInstance();
 			IListWriter lw = null;
@@ -530,9 +534,11 @@ public class JDBC {
 					throw new UnsupportedOperationError("JDBC Datalink types are currently not supported", null);
 				case Types.DATE:
 					if (rs.getDate(idx) != null) {
-						c.setTime(rs.getDate(idx));
+						c = Calendar.getInstance();
+						c.setTimeInMillis(rs.getDate(idx).getTime());
+//						c.setTime(rs.getDate(idx));
 					}
-					res = vf.date(c.get(Calendar.YEAR), c.get(Calendar.MONTH), c.get(Calendar.DAY_OF_MONTH));
+					res = vf.date(c.get(Calendar.YEAR), c.get(Calendar.MONTH)+1, c.get(Calendar.DAY_OF_MONTH));
 					break;
 				case Types.DECIMAL:
 					if (rs.getBigDecimal(idx) != null)
@@ -629,14 +635,18 @@ public class JDBC {
 				case Types.STRUCT:
 					throw new UnsupportedOperationError("JDBC Struct types are currently not supported", null);
 				case Types.TIME:
-					if (rs.getTime(idx) != null)
-						c.setTime(rs.getTime(idx));
+					if (rs.getTime(idx) != null) {
+						c = Calendar.getInstance();
+						c.setTimeInMillis(rs.getDate(idx).getTime());
+					}
 					res = vf.time(c.get(Calendar.HOUR_OF_DAY), c.get(Calendar.MINUTE), c.get(Calendar.SECOND), c.get(Calendar.MILLISECOND));
 					break;
 				case Types.TIMESTAMP:
-					if (rs.getTimestamp(idx) != null)
-						c.setTime(rs.getTimestamp(idx));
-					res = vf.datetime(c.get(Calendar.YEAR), c.get(Calendar.MONTH), c.get(Calendar.DAY_OF_MONTH), c.get(Calendar.HOUR_OF_DAY), c.get(Calendar.MINUTE), c.get(Calendar.SECOND), c.get(Calendar.MILLISECOND));
+					if (rs.getTimestamp(idx) != null) {
+						c = Calendar.getInstance();
+						c.setTimeInMillis(rs.getDate(idx).getTime());
+					}
+					res = vf.datetime(c.get(Calendar.YEAR), c.get(Calendar.MONTH)+1, c.get(Calendar.DAY_OF_MONTH), c.get(Calendar.HOUR_OF_DAY), c.get(Calendar.MINUTE), c.get(Calendar.SECOND), c.get(Calendar.MILLISECOND));
 					break;
 				case Types.TINYINT:
 					res = vf.integer(rs.getInt(idx));
@@ -661,18 +671,14 @@ public class JDBC {
 					break;
 			}
 
-			if (columnType.isAbstractDataType() && columnType.getName().equals("Nullable")) {
-				HashMap<Type,Type> bindings = new HashMap<Type,Type>();
+			if(rs.getMetaData().isNullable(idx) != ResultSetMetaData.columnNoNulls) {
 				Type resType = jdbc2pdbType(jdbcColumnType, true);
-				bindings.put(nullableT, resType);
-				Type wrapperType = Nullable.instantiate(bindings);
-
 
 				if (rs.wasNull()) {
-					Type nullT = TF.constructor(TS,  wrapperType, "null");
+					Type nullT = TF.constructor(TS,  resType, "null");
 					res = vf.constructor(nullT);
 				} else {
-					Type notnullT = TF.constructor(TS, wrapperType, "notnull", resType, "item");
+					Type notnullT = TF.constructor(TS, resType, "notnull", resType, "item");
 					res = vf.constructor(notnullT, res);
 				}
 			}
@@ -703,7 +709,41 @@ public class JDBC {
 				while (rs.next()) {
 					IValue tupleValues[] = new IValue[columns];
 					for (int idx = 0; idx < columns; ++idx) {
-						tupleValues[idx] = JDBC.jdbc2pdbValue(rs, idx + 1, elementType.getFieldType(idx), this.vf);
+						tupleValues[idx] = JDBC.jdbc2pdbValue(rs, idx + 1, this.vf);
+					}
+					sw.insert(vf.tuple(tupleValues));
+				}
+				
+				rs.close();
+				stmt.close();
+				
+				return sw.done();
+			} else {
+				throw RuntimeExceptionFactory.illegalArgument(connection, null, null, "Connection does not exist.");
+			}
+		} catch (SQLException sqle) {
+			throw RuntimeExceptionFactory.illegalArgument(connection, null, sqle.getMessage());
+		}
+	}
+
+	// TODO: Add more error handling code...
+	public IValue loadTable(IConstructor connection, IString tableName) {
+		try {
+			IInteger connectionId = (IInteger) connection.get(0);
+			if (connectionMap.containsKey(connectionId)) {
+				Connection conn = connectionMap.get(connectionId);
+				PreparedStatement stmt = conn.prepareStatement("SELECT * FROM " + tableName.getValue());
+				ResultSet rs = stmt.executeQuery();
+				
+				Type elementType = JDBC.TF.valueType();
+
+				ISetWriter sw = vf.setWriter(elementType);
+				int columns = rs.getMetaData().getColumnCount();
+				
+				while (rs.next()) {
+					IValue tupleValues[] = new IValue[columns];
+					for (int idx = 0; idx < columns; ++idx) {
+						tupleValues[idx] = JDBC.jdbc2pdbValue(rs, idx + 1, this.vf);
 					}
 					sw.insert(vf.tuple(tupleValues));
 				}
@@ -735,7 +775,39 @@ public class JDBC {
 				while (rs.next()) {
 					IValue tupleValues[] = new IValue[columns];
 					for (int idx = 0; idx < columns; ++idx) {
-						tupleValues[idx] = JDBC.jdbc2pdbValue(rs, idx + 1, elementType.getFieldType(idx), this.vf);
+						tupleValues[idx] = JDBC.jdbc2pdbValue(rs, idx + 1, this.vf);
+					}
+					lw.append(vf.tuple(tupleValues));
+				}
+				
+				rs.close();
+				stmt.close();
+				
+				return lw.done();
+			} else {
+				throw RuntimeExceptionFactory.illegalArgument(connection, null, null, "Connection does not exist.");
+			}
+		} catch (SQLException sqle) {
+			throw RuntimeExceptionFactory.illegalArgument(connection, null, sqle.getMessage());
+		}
+	}
+
+	public IValue loadTableOrdered(IConstructor connection, IString tableName) {
+		try {
+			IInteger connectionId = (IInteger) connection.get(0);
+			if (connectionMap.containsKey(connectionId)) {
+				Connection conn = connectionMap.get(connectionId);
+				PreparedStatement stmt = conn.prepareStatement("SELECT * FROM " + tableName.getValue());
+				ResultSet rs = stmt.executeQuery();
+				
+				Type elementType = JDBC.TF.valueType();
+				int columns = rs.getMetaData().getColumnCount();
+
+				IListWriter lw = vf.listWriter(elementType);
+				while (rs.next()) {
+					IValue tupleValues[] = new IValue[columns];
+					for (int idx = 0; idx < columns; ++idx) {
+						tupleValues[idx] = JDBC.jdbc2pdbValue(rs, idx + 1, this.vf);
 					}
 					lw.append(vf.tuple(tupleValues));
 				}
